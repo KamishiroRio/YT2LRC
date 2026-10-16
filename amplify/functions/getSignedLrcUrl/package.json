@@ -1,0 +1,9 @@
+{
+  "name": "get-signed-lrc-url",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.900.0",
+    "@aws-sdk/s3-request-presigner": "^3.900.0"
+  }
+}

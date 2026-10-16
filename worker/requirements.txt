@@ -1,0 +1,11 @@
+# ML worker dependencies (see YT2LRC_BUILD_BRIEF.md section 6)
+yt-dlp
+demucs
+stable-whisper
+openai-whisper
+torch
+torchaudio
+boto3
+requests
+beautifulsoup4
+numpy
