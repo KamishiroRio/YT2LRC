@@ -186,9 +186,13 @@ if (process.env.DEPLOY_WORKER === 'true') {
 
   workerService
     .autoScaleTaskCount({ minCapacity: 0, maxCapacity: 1 })
-    .scaleToTrackCustomMetric('QueueDepthScaling', {
+    .scaleOnMetric('QueueDepthScaling', {
       metric: totalQueueDepth,
-      targetValue: 1,
+      scalingSteps: [
+        { lower: 1, change: 1 },
+        { upper: 1, change: -1 },
+      ],
+      cooldown: Duration.minutes(1),
     });
 
   customOutput.workerRepoUri = workerRepo.repositoryUri;
