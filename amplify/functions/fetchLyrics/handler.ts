@@ -7,25 +7,31 @@ const CURL_USER_AGENT =
 
 function execFileAsync(cmd: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile(cmd, args, { maxBuffer: 20 * 1024 * 1024 }, (error, stdout) => {
-      if (error) reject(error);
-      else resolve(String(stdout));
+    execFile(cmd, args, { maxBuffer: 20 * 1024 * 1024 }, (error, stdout, stderr) => {
+      if (error) {
+        const detail = stderr ? String(stderr).trim() : '';
+        reject(new Error(`${error.message}${detail ? ' | stderr: ' + detail : ''}`));
+      } else {
+        resolve(String(stdout));
+      }
     });
   });
 }
 
-// utanet blocks Node's fetch (TLS fingerprint) but accepts curl's system TLS stack.
+// utanet blocks Node's fetch (TLS fingerprint) and the Lambda's IP, so fall
+// back to a non-AWS proxy when a direct request fails.
 async function fetchHtmlViaCurl(url: string): Promise<string> {
-  return execFileAsync('curl', [
-    '-s',
-    '-f',
-    '-L',
-    '--max-time',
-    '20',
-    '-A',
-    CURL_USER_AGENT,
-    url,
-  ]);
+  try {
+    return await execFileAsync('curl', [
+      '-s', '-f', '-L', '--max-time', '20', '-A', CURL_USER_AGENT, url,
+    ]);
+  } catch (error) {
+    console.error('fetchHtmlViaCurl: direct request failed, falling back to proxy:', error instanceof Error ? error.message : error);
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+    return await execFileAsync('curl', [
+      '-s', '-f', '-L', '--max-time', '30', '-A', CURL_USER_AGENT, proxyUrl,
+    ]);
+  }
 }
 
 export const handler: Schema['fetchLyrics']['functionHandler'] = async (event) => {
