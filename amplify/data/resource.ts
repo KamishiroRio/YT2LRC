@@ -62,6 +62,7 @@ const schema = a.schema({
       lyrics: a.string().required(),
       title: a.string(),
       artist: a.string(),
+      audioKey: a.string(),
     })
     .returns(a.ref('Job'))
     .authorization((allow) => [allow.authenticated()])

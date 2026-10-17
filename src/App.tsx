@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { generateClient } from 'aws-amplify/data'
+import { uploadData } from 'aws-amplify/storage'
 
 import { useAuthenticator } from '@aws-amplify/ui-react'
 import type { Schema } from '../amplify/data/resource'
@@ -38,6 +39,8 @@ function App() {
   const [downloading, setDownloading] = useState(false)
   const [pickingUrl, setPickingUrl] = useState('')
   const [selectedCandidateUrl, setSelectedCandidateUrl] = useState('')
+  const [audioKey, setAudioKey] = useState('')
+  const [uploading, setUploading] = useState(false)
 
   const subRef = useRef<{ unsubscribe: () => void } | null>(null)
 
@@ -90,6 +93,22 @@ function App() {
     }
   }
 
+  async function handleFileUpload(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    setError('')
+    try {
+      const key = `uploads/${Date.now()}-${file.name}`
+      await uploadData({ path: key, data: file }).result
+      setAudioKey(key)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setUploading(false)
+    }
+  }
+
   async function handleStart() {
     if (!youtubeUrl.trim()) {
       setError('請先輸入 YouTube URL')
@@ -112,6 +131,7 @@ function App() {
         lyrics,
         title: title || undefined,
         artist: artist || undefined,
+        audioKey: audioKey || undefined,
       })
       if (res.errors && res.errors.length > 0) {
         throw new Error(res.errors[0].message)
@@ -251,6 +271,17 @@ function App() {
               </select>
             </div>
           )}
+
+          <div className="field-label">音檔（選填，上傳後就不從 YouTube 下載）</div>
+          <input className="input" type="file" accept="audio/*,.wav,.mp3,.m4a,.webm" onChange={handleFileUpload} disabled={uploading} />
+          {uploading && <p style={{ margin: '4px 0' }}>上傳中...</p>}
+          {audioKey && <p style={{ margin: '4px 0' }}>✅ 已上傳：{audioKey.split('/').pop()}</p>}
+          <details style={{ marginBottom: 12 }}>
+            <summary>不知道怎麼取得音檔？</summary>
+            <pre className="log-box" style={{ fontSize: 12 }}>{`在本機執行（需安裝 yt-dlp）：
+
+yt-dlp -f bestaudio -x --audio-format wav -o "audio.wav" "<貼上 YouTube 分享連結>"`}</pre>
+          </details>
 
           <button className="button" onClick={handleStart} disabled={starting || !lyrics.trim()}>{starting ? '啟動中...' : '開始對齊'}</button>
         </section>

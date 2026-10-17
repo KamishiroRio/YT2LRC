@@ -142,6 +142,12 @@ if (process.env.DEPLOY_WORKER === 'true') {
       resources: [`${backend.storage.resources.bucket.bucketArn}/lrc/*`],
     }),
   );
+  workerTaskDef.taskRole.addToPrincipalPolicy(
+    new iam.PolicyStatement({
+      actions: ['s3:GetObject'],
+      resources: [`${backend.storage.resources.bucket.bucketArn}/uploads/*`],
+    }),
+  );
 
   new ecs.FargateService(workerStack, 'WorkerService', {
     cluster: workerCluster,

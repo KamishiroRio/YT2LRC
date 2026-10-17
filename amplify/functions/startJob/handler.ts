@@ -17,6 +17,7 @@ export const handler: Schema['startJob']['functionHandler'] = async (event) => {
   const lyrics = event.arguments.lyrics?.trim();
   const title = event.arguments.title?.trim() || undefined;
   const artist = event.arguments.artist?.trim() || undefined;
+  const audioKey = event.arguments.audioKey?.trim() || undefined;
 
   if (!trackId || !youtubeUrl || !lyrics) {
     throw new Error('trackId, youtubeUrl, and lyrics are required.');
@@ -49,6 +50,7 @@ export const handler: Schema['startJob']['functionHandler'] = async (event) => {
           youtubeUrl,
           lyrics,
           trackId,
+          audioKey,
         }),
       }),
     );

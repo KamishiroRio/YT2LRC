@@ -74,6 +74,7 @@ def process_message(body: dict):
     youtube_url = body["youtubeUrl"]
     lyrics = body.get("lyrics") or ""
     track_id = body.get("trackId") or ""
+    audio_key = body.get("audioKey") or ""
 
     # Seed the log with whatever the startJob Lambda already wrote (e.g. "QUEUED").
     log_lines = []
@@ -98,17 +99,24 @@ def process_message(body: dict):
     try:
         log(f"開始處理：{track_id}")
 
-        log("[1/4] 準備啟動 yt-dlp 下載音源...")
         update_job(job_id, status="DOWNLOADING")
-        if not download_youtube_audio(youtube_url, wav_path, log):
-            update_job(job_id, status="FAILED")
-            log("❌ 下載失敗。[DONE]")
-            return
-        log("✅ [1/4] 音源下載完成！")
+        if audio_key:
+            log("[1/4] 從 S3 下載使用者上傳的音檔...")
+            local_audio = os.path.join(work_dir, os.path.basename(audio_key))
+            s3.download_file(BUCKET_NAME, audio_key, local_audio)
+            log("✅ [1/4] 音檔下載完成！")
+        else:
+            log("[1/4] 準備啟動 yt-dlp 下載音源...")
+            if not download_youtube_audio(youtube_url, wav_path, log):
+                update_job(job_id, status="FAILED")
+                log("❌ 下載失敗。[DONE]")
+                return
+            local_audio = wav_path
+            log("✅ [1/4] 音源下載完成！")
 
         log("[2/4] 準備啟動 Demucs 人聲分離...")
         update_job(job_id, status="SEPARATING")
-        vocal_path = isolate_vocals(wav_path, work_dir, log)
+        vocal_path = isolate_vocals(local_audio, work_dir, log)
         log("✅ [2/4] Demucs 人聲分離完成！")
 
         log("[3/4] 準備啟動 Whisper 模型對齊...")
