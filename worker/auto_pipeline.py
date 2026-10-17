@@ -24,6 +24,9 @@ def download_youtube_audio(yt_url: str, output_path: str, log_callback, max_retr
         }],
         "quiet": True,
         "no_warnings": True,
+        # YouTube blocks datacenter IPs with the default web client ("Sign in
+        # to confirm you're not a bot"), so try alternate player clients first.
+        "extractor_args": {"youtube": {"player_client": ["android", "tv", "web"]}},
     }
 
     for attempt in range(1, max_retries + 1):
