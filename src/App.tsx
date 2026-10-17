@@ -278,9 +278,9 @@ function App() {
           {audioKey && <p style={{ margin: '4px 0' }}>✅ 已上傳：{audioKey.split('/').pop()}</p>}
           <details style={{ marginBottom: 12 }}>
             <summary>不知道怎麼取得音檔？</summary>
-            <pre className="log-box" style={{ fontSize: 12 }}>{`在本機執行（需安裝 yt-dlp）：
+            <pre className="log-box" style={{ fontSize: 12 }}>{`在本機執行（需安裝 yt-dlp，不用裝 ffmpeg）：
 
-yt-dlp -f bestaudio -x --audio-format wav -o "audio.wav" "<貼上 YouTube 分享連結>"`}</pre>
+yt-dlp -f bestaudio -o "audio.%(ext)s" "<貼上 YouTube 分享連結>"`}</pre>
           </details>
 
           <button className="button" onClick={handleStart} disabled={starting || !lyrics.trim()}>{starting ? '啟動中...' : '開始對齊'}</button>

@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 
 import boto3
 import stable_whisper
+from pymongo import MongoClient
 
 from aligner import isolate_vocals, align_and_convert_to_lrc
 from auto_pipeline import download_youtube_audio
@@ -27,6 +28,7 @@ QUEUE_URL = _env("JOB_QUEUE_URL")
 TABLE_NAME = _env("JOBS_TABLE_NAME")
 BUCKET_NAME = _env("LRC_BUCKET_NAME")
 REGION = os.environ.get("AWS_REGION") or "us-east-1"
+MONGO_URI = os.environ.get("MONGO_URI")  # optional; skip MongoDB write if unset
 
 dynamodb = boto3.resource("dynamodb", region_name=REGION)
 table = dynamodb.Table(TABLE_NAME)
@@ -67,6 +69,27 @@ def update_job(job_id: str, *, status=None, lrc_key=None, progress_log=None):
 def get_job(job_id: str):
     resp = table.get_item(Key={"id": job_id})
     return resp.get("Item")
+
+
+def write_lrc_to_mongo(track_id: str, lrc_path: str):
+    """Write the generated .lrc to MongoDB (spotify_project.lyrics) if configured."""
+    if not MONGO_URI:
+        return
+    try:
+        client = MongoClient(MONGO_URI)
+        db = client["spotify_project"]
+        collection = db["lyrics"]
+        with open(lrc_path, "r", encoding="utf-8") as f:
+            lrc_content = f.read()
+        collection.update_one(
+            {"track_id": track_id},
+            {"$set": {"lrc": lrc_content}},
+            upsert=True,
+        )
+        client.close()
+        print(f"✅ 已寫入 MongoDB：{track_id}", flush=True)
+    except Exception as e:
+        print(f"  (MongoDB 寫入失敗: {e})", flush=True)
 
 
 def process_message(body: dict):
@@ -131,6 +154,7 @@ def process_message(body: dict):
         lrc_key = f"lrc/{job_id}.lrc"
         s3.upload_file(lrc_path, BUCKET_NAME, lrc_key)
         update_job(job_id, status="DONE", lrc_key=lrc_key)
+        write_lrc_to_mongo(track_id, lrc_path)
         log("🎉 完美收工！已成功上傳 LRC。[DONE]")
 
     except Exception as e:

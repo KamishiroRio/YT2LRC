@@ -4,6 +4,7 @@ import * as ecr from 'aws-cdk-lib/aws-ecr';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as sqs from 'aws-cdk-lib/aws-sqs';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { defineBackend } from '@aws-amplify/backend';
 import { auth } from './auth/resource';
 import { data } from './data/resource';
@@ -115,6 +116,15 @@ if (process.env.DEPLOY_WORKER === 'true') {
       JOBS_TABLE_NAME: backend.data.resources.tables['Job'].tableName,
       LRC_BUCKET_NAME: backend.storage.resources.bucket.bucketName,
       AWS_REGION: workerStack.region,
+    },
+    secrets: {
+      MONGO_URI: ecs.Secret.fromSecretsManager(
+        secretsmanager.Secret.fromSecretNameV2(
+          workerStack,
+          'MongoUriSecret',
+          'YT2LRC_MONGO_URI',
+        ),
+      ),
     },
   });
 

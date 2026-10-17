@@ -6,6 +6,7 @@ openai-whisper
 torch
 torchaudio
 boto3
+pymongo
 requests
 beautifulsoup4
 numpy
