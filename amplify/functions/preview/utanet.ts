@@ -1,5 +1,5 @@
 import * as cheerio from 'cheerio';
-import { fetchText } from './http';
+import { fetchHtmlViaCurl } from './http';
 
 export type UtaNetCandidate = {
   title: string;
@@ -18,16 +18,14 @@ export async function searchUtaNet(
   }
 
   const url = new URL(`${UTA_NET_ORIGIN}/search/`);
-  url.searchParams.set('Aselect', '2');
   url.searchParams.set('Keyword', query);
-  url.searchParams.set('Bselect', '3');
 
-  const html = await fetchText(url.toString());
+  const html = await fetchHtmlViaCurl(url.toString());
   return parseSearchResults(html);
 }
 
 export async function fetchUtaNetLyrics(songUrl: string): Promise<string> {
-  const html = await fetchText(songUrl);
+  const html = await fetchHtmlViaCurl(songUrl);
   return parseLyrics(html);
 }
 
@@ -52,7 +50,7 @@ export function parseSearchResults(html: string): UtaNetCandidate[] {
       return;
     }
 
-    const title = $(el).text().replace(/\s+/g, ' ').trim();
+    let title = $(el).text().replace(/\s+/g, ' ').trim();
     if (!title) {
       return;
     }
@@ -60,6 +58,11 @@ export function parseSearchResults(html: string): UtaNetCandidate[] {
     const row = $(el).closest('tr');
     const artistLink = row.find('a[href*="/artist/"]').first();
     const artist = artistLink.text().replace(/\s+/g, ' ').trim();
+
+    // utanet search results often append the artist name to the song title.
+    if (artist && title.endsWith(artist)) {
+      title = title.slice(0, -artist.length).trim();
+    }
 
     seen.add(url);
     candidates.push({ title, artist, url });

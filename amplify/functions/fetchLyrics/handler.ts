@@ -1,11 +1,31 @@
 import * as cheerio from 'cheerio';
+import { execFile } from 'node:child_process';
 import type { Schema } from '../../data/resource';
 
-const HEADERS = {
-  'User-Agent':
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-  'Accept-Language': 'ja,en;q=0.8',
-};
+const CURL_USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+function execFileAsync(cmd: string, args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(cmd, args, { maxBuffer: 20 * 1024 * 1024 }, (error, stdout) => {
+      if (error) reject(error);
+      else resolve(String(stdout));
+    });
+  });
+}
+
+// utanet blocks Node's fetch (TLS fingerprint) but accepts curl's system TLS stack.
+async function fetchHtmlViaCurl(url: string): Promise<string> {
+  return execFileAsync('curl', [
+    '-s',
+    '-L',
+    '--max-time',
+    '20',
+    '-A',
+    CURL_USER_AGENT,
+    url,
+  ]);
+}
 
 export const handler: Schema['fetchLyrics']['functionHandler'] = async (event) => {
   const url = event.arguments.url?.trim();
@@ -13,12 +33,7 @@ export const handler: Schema['fetchLyrics']['functionHandler'] = async (event) =
     throw new Error('url is required.');
   }
 
-  const response = await fetch(url, { headers: HEADERS });
-  if (!response.ok) {
-    throw new Error(`Request failed (${response.status}): ${url}`);
-  }
-
-  const html = await response.text();
+  const html = await fetchHtmlViaCurl(url);
   const $ = cheerio.load(html);
   const area = $('#kashi_area').first();
   if (!area.length) {
