@@ -124,6 +124,7 @@ if (process.env.DEPLOY_WORKER === 'true') {
           'MongoUriSecret',
           'YT2LRC_MONGO_URI',
         ),
+        'YT2LRC_MONGO_URI',
       ),
     },
   });
