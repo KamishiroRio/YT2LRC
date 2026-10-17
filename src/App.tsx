@@ -218,6 +218,7 @@ function App() {
 
   const hasPreview = Boolean(title || artist || lyrics || candidates.length > 0)
   const isDone = status === 'DONE'
+  const isJobActive = Boolean(jobId) && status !== 'DONE' && status !== 'FAILED'
 
   return (
     <div className="app">
@@ -283,7 +284,7 @@ function App() {
 yt-dlp -f bestaudio -o "audio.%(ext)s" "<貼上 YouTube 分享連結>"`}</pre>
           </details>
 
-          <button className="button" onClick={handleStart} disabled={starting || !lyrics.trim()}>{starting ? '啟動中...' : '開始對齊'}</button>
+          <button className="button" onClick={handleStart} disabled={starting || !lyrics.trim() || isJobActive}>{starting ? '啟動中...' : isJobActive ? '處理中...' : '開始對齊'}</button>
         </section>
       )}
 
