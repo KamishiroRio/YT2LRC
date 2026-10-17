@@ -189,8 +189,8 @@ if (process.env.DEPLOY_WORKER === 'true') {
     .scaleOnMetric('QueueDepthScaling', {
       metric: totalQueueDepth,
       scalingSteps: [
-        { lower: 1, change: 1 },
         { upper: 1, change: -1 },
+        { lower: 1, change: 1 },
       ],
       cooldown: Duration.minutes(1),
     });
