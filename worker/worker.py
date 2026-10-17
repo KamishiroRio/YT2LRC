@@ -180,7 +180,7 @@ def main():
             QueueUrl=QUEUE_URL,
             MaxNumberOfMessages=1,
             WaitTimeSeconds=20,  # long polling
-            VisibilityTimeout=3600,  # long ML jobs need more than the queue default
+            VisibilityTimeout=900,  # 15 min: enough for a job, but re-queues quickly if the task dies
         )
 
         for msg in resp.get("Messages", []):

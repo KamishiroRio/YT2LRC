@@ -1,6 +1,5 @@
 import type { Schema } from '../../data/resource';
 import { searchItunes } from './itunes';
-import { fetchUtaNetLyrics, pickBestCandidate, searchUtaNet } from './utanet';
 import {
   fetchYouTubeOEmbed,
   isYouTubeUrl,
@@ -30,37 +29,14 @@ export const handler: Schema['preview']['functionHandler'] = async (event) => {
     artist = oembed.channel;
   }
 
-  const searchKeyword = title || itunesQuery;
-  console.log('preview: title=', title, '| artist=', artist, '| keyword=', searchKeyword);
+  console.log('preview: title=', title, '| artist=', artist);
 
-  // Search with "title + artist" first for more accurate matches, then fall back to title only.
-  let candidates = (title && artist)
-    ? await searchUtaNet(`${title} ${artist}`).catch((e) => {
-        console.error('preview: searchUtaNet(title+artist) failed:', e instanceof Error ? e.message : e);
-        return [];
-      })
-    : [];
-  if (candidates.length === 0) {
-    candidates = await searchUtaNet(searchKeyword).catch((e) => {
-      console.error('preview: searchUtaNet(title) failed:', e instanceof Error ? e.message : e);
-      return [];
-    });
-  }
-
-  console.log('preview: candidates count =', candidates.length, '| sample =', JSON.stringify(candidates.slice(0, 3)));
-
-  const best = pickBestCandidate(candidates, title, artist);
-  const lyrics = best
-    ? await fetchUtaNetLyrics(best.url).catch((e) => {
-        console.error('preview: fetchUtaNetLyrics failed:', e instanceof Error ? e.message : e);
-        return '';
-      })
-    : '';
-
+  // utanet scraping is blocked from the datacenter IP (and slow), so lyrics are
+  // entered manually in the UI. Skip the scrape to keep preview fast.
   return {
     title,
     artist,
-    lyrics,
-    candidates,
+    lyrics: '',
+    candidates: [],
   };
 };
