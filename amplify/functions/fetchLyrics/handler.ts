@@ -18,6 +18,7 @@ function execFileAsync(cmd: string, args: string[]): Promise<string> {
 async function fetchHtmlViaCurl(url: string): Promise<string> {
   return execFileAsync('curl', [
     '-s',
+    '-f',
     '-L',
     '--max-time',
     '20',

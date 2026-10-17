@@ -31,16 +31,31 @@ export const handler: Schema['preview']['functionHandler'] = async (event) => {
   }
 
   const searchKeyword = title || itunesQuery;
+  console.log('preview: title=', title, '| artist=', artist, '| keyword=', searchKeyword);
+
   // Search with "title + artist" first for more accurate matches, then fall back to title only.
   let candidates = (title && artist)
-    ? await searchUtaNet(`${title} ${artist}`).catch(() => [])
+    ? await searchUtaNet(`${title} ${artist}`).catch((e) => {
+        console.error('preview: searchUtaNet(title+artist) failed:', e instanceof Error ? e.message : e);
+        return [];
+      })
     : [];
   if (candidates.length === 0) {
-    candidates = await searchUtaNet(searchKeyword).catch(() => []);
+    candidates = await searchUtaNet(searchKeyword).catch((e) => {
+      console.error('preview: searchUtaNet(title) failed:', e instanceof Error ? e.message : e);
+      return [];
+    });
   }
 
+  console.log('preview: candidates count =', candidates.length, '| sample =', JSON.stringify(candidates.slice(0, 3)));
+
   const best = pickBestCandidate(candidates, title, artist);
-  const lyrics = best ? await fetchUtaNetLyrics(best.url).catch(() => '') : '';
+  const lyrics = best
+    ? await fetchUtaNetLyrics(best.url).catch((e) => {
+        console.error('preview: fetchUtaNetLyrics failed:', e instanceof Error ? e.message : e);
+        return '';
+      })
+    : '';
 
   return {
     title,
