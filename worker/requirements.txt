@@ -1,7 +1,7 @@
 # ML worker dependencies (see YT2LRC_BUILD_BRIEF.md section 6)
 yt-dlp
 demucs
-stable-whisper
+stable-ts
 openai-whisper
 torch
 torchaudio
