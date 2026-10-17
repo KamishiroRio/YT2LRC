@@ -104,7 +104,7 @@ export function pickBestCandidate(
     }
   }
 
-  if (candidates.length === 1 || bestScore >= 3) {
+  if (candidates.length === 1 || bestScore >= 2) {
     return best;
   }
 

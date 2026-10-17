@@ -37,6 +37,7 @@ function App() {
   const [starting, setStarting] = useState(false)
   const [downloading, setDownloading] = useState(false)
   const [pickingUrl, setPickingUrl] = useState('')
+  const [selectedCandidateUrl, setSelectedCandidateUrl] = useState('')
 
   const subRef = useRef<{ unsubscribe: () => void } | null>(null)
 
@@ -51,6 +52,7 @@ function App() {
     setError('')
     setCandidates([])
     setLyrics('')
+    setSelectedCandidateUrl('')
     try {
       const res = await client.queries.preview({ youtubeUrl: youtubeUrl.trim() })
       if (res.errors && res.errors.length > 0) {
@@ -224,14 +226,29 @@ function App() {
           <div className="field-label">歌詞（可編輯）</div>
           <textarea className="textarea" value={lyrics} onChange={(e) => setLyrics(e.target.value)} />
 
-          {candidates.length > 0 && !lyrics.trim() && (
+          {candidates.length > 0 && (
             <div style={{ marginBottom: 12 }}>
-              <p style={{ margin: '0 0 8px' }}>找不到自動配對的歌詞？從候選清單選一個：</p>
-              {candidates.map((c) => (
-                <button key={c.url} className="button button-block" onClick={() => handlePickCandidate(c)} disabled={pickingUrl === c.url}>
-                  {c.title} — {c.artist}
-                </button>
-              ))}
+              <div className="field-label">選擇歌詞來源</div>
+              <select
+                className="input"
+                value={selectedCandidateUrl}
+                onChange={(e) => {
+                  const url = e.target.value
+                  setSelectedCandidateUrl(url)
+                  if (url) {
+                    const c = candidates.find((x) => x.url === url)
+                    if (c) handlePickCandidate(c)
+                  }
+                }}
+                disabled={pickingUrl !== ''}
+              >
+                <option value="">（自動配對的歌詞）</option>
+                {candidates.map((c) => (
+                  <option key={c.url} value={c.url}>
+                    {c.title} — {c.artist}
+                  </option>
+                ))}
+              </select>
             </div>
           )}
 

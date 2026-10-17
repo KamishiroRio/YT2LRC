@@ -31,9 +31,12 @@ export const handler: Schema['preview']['functionHandler'] = async (event) => {
   }
 
   const searchKeyword = title || itunesQuery;
-  let candidates = await searchUtaNet(searchKeyword).catch(() => []);
-  if (candidates.length === 0 && artist && title) {
-    candidates = await searchUtaNet(`${title} ${artist}`).catch(() => []);
+  // Search with "title + artist" first for more accurate matches, then fall back to title only.
+  let candidates = (title && artist)
+    ? await searchUtaNet(`${title} ${artist}`).catch(() => [])
+    : [];
+  if (candidates.length === 0) {
+    candidates = await searchUtaNet(searchKeyword).catch(() => []);
   }
 
   const best = pickBestCandidate(candidates, title, artist);
