@@ -26,13 +26,17 @@ const backend = defineBackend({
   getSignedLrcUrl,
 });
 
-const workerStack = backend.createStack('worker');
-
 // --- SQS job queue (startJob -> worker) ---
-const jobQueue = new sqs.Queue(workerStack, 'JobQueue', {
+// The queue lives in its own stack so both the data stack (startJob) and the
+// worker stack (ECS) depend on it in one direction only, avoiding a circular
+// dependency between the worker and data stacks.
+const queueStack = backend.createStack('queue');
+const jobQueue = new sqs.Queue(queueStack, 'JobQueue', {
   visibilityTimeout: Duration.minutes(30),
   retentionPeriod: Duration.days(4),
 });
+
+const workerStack = backend.createStack('worker');
 
 backend.startJob.addEnvironment('JOB_QUEUE_URL', jobQueue.queueUrl);
 backend.startJob.resources.lambda.addToRolePolicy(
