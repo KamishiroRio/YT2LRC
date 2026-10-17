@@ -98,6 +98,8 @@ def process_message(body: dict):
     lyrics = body.get("lyrics") or ""
     track_id = body.get("trackId") or ""
     audio_key = body.get("audioKey") or ""
+    title = body.get("title") or ""
+    artist = body.get("artist") or ""
 
     # Seed the log with whatever the startJob Lambda already wrote (e.g. "QUEUED").
     log_lines = []
@@ -154,7 +156,10 @@ def process_message(body: dict):
         lrc_key = f"lrc/{job_id}.lrc"
         s3.upload_file(lrc_path, BUCKET_NAME, lrc_key)
         update_job(job_id, status="DONE", lrc_key=lrc_key)
-        write_lrc_to_mongo(track_id, lrc_path)
+        write_lrc_to_mongo(
+            f"{title}_{artist}" if (title and artist) else track_id,
+            lrc_path,
+        )
         log("🎉 完美收工！已成功上傳 LRC。[DONE]")
 
     except Exception as e:

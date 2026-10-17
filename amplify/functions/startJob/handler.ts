@@ -51,6 +51,8 @@ export const handler: Schema['startJob']['functionHandler'] = async (event) => {
           lyrics,
           trackId,
           audioKey,
+          title,
+          artist,
         }),
       }),
     );
