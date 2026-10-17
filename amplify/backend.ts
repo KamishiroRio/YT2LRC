@@ -5,6 +5,7 @@ import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as sqs from 'aws-cdk-lib/aws-sqs';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import { defineBackend } from '@aws-amplify/backend';
 import { auth } from './auth/resource';
 import { data } from './data/resource';
@@ -160,12 +161,35 @@ if (process.env.DEPLOY_WORKER === 'true') {
     }),
   );
 
-  new ecs.FargateService(workerStack, 'WorkerService', {
+  const workerService = new ecs.FargateService(workerStack, 'WorkerService', {
     cluster: workerCluster,
     taskDefinition: workerTaskDef,
-    desiredCount: 1,
+    desiredCount: 0,
     assignPublicIp: true,
   });
+
+  // Scale the worker to zero when the queue is empty and back to one when a
+  // job arrives. Use TOTAL queue depth (visible + in-flight) so the task isn't
+  // scaled down while it's still processing a message.
+  const totalQueueDepth = new cloudwatch.MathExpression({
+    expression: 'visible + notVisible',
+    usingMetrics: {
+      visible: jobQueue.metricApproximateNumberOfMessagesVisible({
+        period: Duration.minutes(1),
+      }),
+      notVisible: jobQueue.metricApproximateNumberOfMessagesNotVisible({
+        period: Duration.minutes(1),
+      }),
+    },
+    period: Duration.minutes(1),
+  });
+
+  workerService
+    .autoScaleTaskCount({ minCapacity: 0, maxCapacity: 1 })
+    .scaleToTrackCustomMetric('QueueDepthScaling', {
+      metric: totalQueueDepth,
+      targetValue: 1,
+    });
 
   customOutput.workerRepoUri = workerRepo.repositoryUri;
 }
