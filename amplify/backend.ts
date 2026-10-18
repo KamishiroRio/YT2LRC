@@ -184,12 +184,12 @@ if (process.env.DEPLOY_WORKER === 'true') {
     }),
   });
 
-  backend.startJob.addEnvironment('WORKER_LAUNCH_CONFIG_PARAM', launchConfigParam.parameterName);
+  backend.startJob.addEnvironment('WORKER_LAUNCH_CONFIG_PARAM', '/yt2lrc/worker/launch-config');
 
   backend.startJob.resources.lambda.addToRolePolicy(
     new iam.PolicyStatement({
       actions: ['ssm:GetParameter'],
-      resources: [launchConfigParam.parameterArn],
+      resources: ['*'],
     }),
   );
   backend.startJob.resources.lambda.addToRolePolicy(
