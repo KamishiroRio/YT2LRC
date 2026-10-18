@@ -12,6 +12,11 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Pre-download the ML models into the image so cold starts don't re-download
+# (and don't hang on a slow/flaky model download).
+RUN python -c "from demucs.pretrained import get_model; get_model('htdemucs')"
+RUN python -c "import whisper; whisper.load_model('small')"
+
 COPY . .
 
 CMD ["python", "worker.py"]

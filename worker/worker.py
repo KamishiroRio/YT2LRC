@@ -180,7 +180,7 @@ def main():
             QueueUrl=QUEUE_URL,
             MaxNumberOfMessages=1,
             WaitTimeSeconds=20,  # long polling
-            VisibilityTimeout=900,  # 15 min: enough for a job, but re-queues quickly if the task dies
+            VisibilityTimeout=1800,  # 30 min: enough for demucs on a long song without re-queueing mid-job
         )
 
         for msg in resp.get("Messages", []):

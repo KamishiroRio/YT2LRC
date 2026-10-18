@@ -25,7 +25,27 @@ def isolate_vocals(audio_path: str, output_dir: str, log_callback=None) -> str:
         "-o", output_dir,
         audio_path,
     ]
-    subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+    try:
+        proc = subprocess.run(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            errors="replace",
+            timeout=1800,  # 30 min
+        )
+    except subprocess.TimeoutExpired as e:
+        tail = (e.output or "").splitlines()[-40:]
+        log("  ❌ Demucs 逾時（30 分鐘未完成），最後輸出：")
+        for line in tail:
+            log(f"      {line}")
+        raise RuntimeError("Demucs timed out after 30 minutes")
+    if proc.returncode != 0:
+        tail = (proc.stdout or "").splitlines()[-40:]
+        log(f"  ❌ Demucs 失敗 (exit code {proc.returncode})，最後輸出：")
+        for line in tail:
+            log(f"      {line}")
+        raise RuntimeError(f"Demucs failed (exit code {proc.returncode})")
 
     base = os.path.splitext(os.path.basename(audio_path))[0]
     vocal_path = os.path.join(output_dir, "htdemucs", base, "vocals.wav")
