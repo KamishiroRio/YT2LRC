@@ -104,8 +104,8 @@ if (process.env.DEPLOY_WORKER === 'true') {
   workerRepo.grantPull(workerExecutionRole);
 
   const workerTaskDef = new ecs.FargateTaskDefinition(workerStack, 'WorkerTaskDef', {
-    memoryLimitMiB: 8192,
-    cpu: 2048,
+    memoryLimitMiB: 16384,
+    cpu: 4096,
     executionRole: workerExecutionRole,
   });
 
