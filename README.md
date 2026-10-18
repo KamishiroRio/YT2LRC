@@ -17,7 +17,7 @@ Amplify Gen 2 後端
    └─ functions (Lambda)      — preview / startJob / fetchLyrics / getSignedLrcUrl
    │
    ▼
-SQS 佇列 ──► ECS Fargate worker（Docker, Python）
+SQS 佇列 ──► ECS Fargate worker（Docker, Python；由 startJob 以 ecs:RunTask 按需啟動、跑完自動退出）
                 音檔（使用者上傳 or yt-dlp）→ demucs → stable-whisper → .lrc
                 → 上傳 S3 → 更新 DynamoDB → 寫入 MongoDB（選配）
 ```
@@ -25,7 +25,7 @@ SQS 佇列 ──► ECS Fargate worker（Docker, Python）
 ## 產線流程
 
 1. **預覽**：YouTube 網址 → oembed + iTunes 抓歌名/歌手 → utanet 抓候選歌詞（目前因封鎖改手動貼）。
-2. **開始對齊**：`startJob` 寫入 `Job(QUEUED)` + 推訊息到 SQS。
+2. **開始對齊**：`startJob` 寫入 `Job(QUEUED)` + 推訊息到 SQS + 用 `ecs:RunTask` 啟動 worker（若已有 worker 在跑則略過）。
 3. **Worker**：從 SQS 收訊息 → 拿音檔（使用者上傳 or yt-dlp）→ Demucs 分離人聲 → stable-whisper 對齊 → 產出 .lrc。
 4. **回傳**：上傳 .lrc 到 S3 → 更新 DynamoDB（status / lrcKey / progressLog）→ 寫入 MongoDB（選配）。
 5. **前端**：每 2 秒輪詢 Job 狀態 → 顯示即時進度 → DONE 後下載 .lrc。
@@ -51,12 +51,17 @@ SQS 佇列 ──► ECS Fargate worker（Docker, Python）
 
 ```bash
 cd worker
-docker build -t yt2lrc-worker .
-docker tag yt2lrc-worker:latest <ECR_URI>:latest
+docker build -t <ECR_URI>:latest .
 docker push <ECR_URI>:latest
-# 然後 ECS → service → Update service → Force new deployment
+# 不用 Force new deployment（已無 ECS service）；startJob 會直接 RunTask 啟動 worker，
+# worker 跑完、佇列空了會自己退出。
 ```
 
+> ⚠️ ECR 登入 token 12 小時會過期，若 push 出現 `denied: Your authorization token has expired`：
+> ```bash
+> aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <ECR_URI>
+> ```
+>
 > ⚠️ 改 `worker/requirements.txt` 會讓 pip 快取失效，build 要 20～40 分鐘；只改 `worker.py` 則約 1 分鐘。
 
 ## 已知限制（重要）
@@ -90,6 +95,12 @@ docker push <ECR_URI>:latest
 4. **secret 金鑰/值**：存成 key/value 格式時，CDK 要指定 `fromSecretsManager(secret, '欄位名')` 讀欄位，否則會讀到整包 JSON。
 5. **`.env` 別 commit**：曾發生 `.env`（含 MongoDB 密碼）被推上 GitHub，務必 gitignore。
 6. **CloudFormation 卡住**：Fargate service 等 image 時，stack 會卡 UPDATE_IN_PROGRESS，image push 上去才解卡。
+7. **SQS + CloudWatch Alarm 不適合 0↔1 scale-to-zero**：SQS 指標（visible/notVisible）有延遲＋近似，會在 worker 處理中瞬間變 0，誤觸縮容把 task 殺掉（造成「每 ~4 分鐘重啟一個 task」的無限迴圈）。解法：**startJob Lambda 用 `ecs:RunTask` 按需啟動 worker、worker 跑完佇列空就 `break` 退出**（事件驅動，不靠指標）。
+8. **data ↔ worker 循環相依**：startJob（data 堆疊）直接引用 worker 的 cluster/task-def ARN 會形成循環相依（worker 又要讀 data 的 Job 表）。解法：**SSM Parameter Store 存 launch config + env 用「純字串」+ IAM 用 wildcard**。注意 `StringParameter.parameterName` / `parameterArn` 其實是 `Ref` 不是純字串，照樣會循環。
+9. **前端進度卡 [4/4]**：worker 先寫 `DONE` 再寫最後進度 log，前端「看到 DONE 就停止輪詢」→ 卡在「[4/4] 準備上傳」。修法：把最後進度 log 寫在 `DONE` 之前。
+10. **前端 `onUpdate` 訂閱亂序**：DynamoDB stream 事件延遲/亂序，會把 `DONE` 蓋回舊狀態。拔掉訂閱、只用 2 秒輪詢（直接讀 DynamoDB 一定正確）。
+11. **Demucs OOM**：8GB 記憶體對長歌不夠，worker 會 OOM（exit 137）卡死。改成 16GB + 4 vCPU + Docker 預載 demucs/whisper 模型（避免冷啟動重新下載）。
+12. **ECR token 12 小時過期**：push 前若 `denied: authorization token expired`，重新 `aws ecr get-login-password | docker login`（跟網頁登入無關）。
 
 ## 本地開發
 
