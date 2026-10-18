@@ -183,7 +183,12 @@ def main():
             VisibilityTimeout=1800,  # 30 min: enough for demucs on a long song without re-queueing mid-job
         )
 
-        for msg in resp.get("Messages", []):
+        messages = resp.get("Messages", [])
+        if not messages:
+            print("Queue empty, shutting down worker container...", flush=True)
+            break
+
+        for msg in messages:
             receipt = msg["ReceiptHandle"]
             try:
                 process_message(json.loads(msg["Body"]))

@@ -5,7 +5,6 @@ import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as sqs from 'aws-cdk-lib/aws-sqs';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
-import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import { defineBackend } from '@aws-amplify/backend';
 import { auth } from './auth/resource';
 import { data } from './data/resource';
@@ -161,41 +160,38 @@ if (process.env.DEPLOY_WORKER === 'true') {
     }),
   );
 
-  const workerService = new ecs.FargateService(workerStack, 'WorkerService', {
-    cluster: workerCluster,
-    taskDefinition: workerTaskDef,
-    desiredCount: 0,
-    assignPublicIp: true,
+  // startJob launches the worker Fargate task on demand (ecs:RunTask) instead of
+  // CloudWatch-alarm Auto Scaling, which is fragile for 0<->1 scale-to-zero
+  // (SQS metrics are approximate + laggy, causing false scale-downs that kill
+  // a task mid-job).
+  const workerSecurityGroup = new ec2.SecurityGroup(workerStack, 'WorkerSecurityGroup', {
+    vpc: workerVpc,
+    allowAllOutbound: true,
   });
 
-  // Scale the worker to zero when the queue is empty and back to one when a
-  // job arrives. Use TOTAL queue depth (visible + in-flight) so the task isn't
-  // scaled down while it's still processing a message.
-  const totalQueueDepth = new cloudwatch.MathExpression({
-    expression: 'visible + notVisible',
-    usingMetrics: {
-      visible: jobQueue.metricApproximateNumberOfMessagesVisible({
-        period: Duration.minutes(1),
-      }),
-      notVisible: jobQueue.metricApproximateNumberOfMessagesNotVisible({
-        period: Duration.minutes(1),
-      }),
-    },
-    period: Duration.minutes(1),
-  });
+  backend.startJob.addEnvironment('WORKER_CLUSTER_ARN', workerCluster.clusterArn);
+  backend.startJob.addEnvironment('WORKER_TASK_DEF_ARN', workerTaskDef.taskDefinitionArn);
+  backend.startJob.addEnvironment(
+    'WORKER_SUBNETS',
+    workerVpc.publicSubnets.map((s) => s.subnetId).join(','),
+  );
+  backend.startJob.addEnvironment('WORKER_SG', workerSecurityGroup.securityGroupId);
 
-  workerService
-    .autoScaleTaskCount({ minCapacity: 0, maxCapacity: 1 })
-    .scaleOnMetric('QueueDepthScaling', {
-      metric: totalQueueDepth,
-      scalingSteps: [
-        { upper: 0, change: -1 },
-        { lower: 1, change: 1 },
+  backend.startJob.resources.lambda.addToRolePolicy(
+    new iam.PolicyStatement({
+      actions: ['ecs:RunTask', 'ecs:ListTasks'],
+      resources: [workerTaskDef.taskDefinitionArn, workerCluster.clusterArn],
+    }),
+  );
+  backend.startJob.resources.lambda.addToRolePolicy(
+    new iam.PolicyStatement({
+      actions: ['iam:PassRole'],
+      resources: [
+        workerExecutionRole.roleArn,
+        workerTaskDef.taskRole.roleArn,
       ],
-      cooldown: Duration.minutes(1),
-      evaluationPeriods: 2,
-      datapointsToAlarm: 2,
-    });
+    }),
+  );
 
   customOutput.workerRepoUri = workerRepo.repositoryUri;
 }

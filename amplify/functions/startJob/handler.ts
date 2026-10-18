@@ -1,5 +1,6 @@
 import { getAmplifyDataClientConfig } from '@aws-amplify/backend/function/runtime';
 import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
+import { ECSClient, ListTasksCommand, RunTaskCommand } from '@aws-sdk/client-ecs';
 import { Amplify } from 'aws-amplify';
 import { generateClient } from 'aws-amplify/data';
 import { env } from '$amplify/env/startJob';
@@ -10,6 +11,16 @@ Amplify.configure(resourceConfig, libraryOptions);
 
 const dataClient = generateClient<Schema>();
 const sqsClient = new SQSClient({});
+const ecsClient = new ECSClient({});
+
+// Worker launch config (injected by backend.ts only when the ECS worker is deployed).
+// Cast through `unknown` because the generated `env` type may not include these yet.
+const workerEnv = env as unknown as {
+  WORKER_CLUSTER_ARN?: string;
+  WORKER_TASK_DEF_ARN?: string;
+  WORKER_SUBNETS?: string;
+  WORKER_SG?: string;
+};
 
 export const handler: Schema['startJob']['functionHandler'] = async (event) => {
   const trackId = event.arguments.trackId?.trim();
@@ -56,6 +67,12 @@ export const handler: Schema['startJob']['functionHandler'] = async (event) => {
         }),
       }),
     );
+
+    // Launch the worker Fargate task on demand (scale-to-zero without relying
+    // on CloudWatch-alarm Auto Scaling). Skip if a worker is already running.
+    if (workerEnv.WORKER_CLUSTER_ARN) {
+      await ensureWorkerRunning();
+    }
   } catch (error) {
     const reason = error instanceof Error ? error.message : 'Unknown SQS error';
     await dataClient.models.Job.update({
@@ -68,6 +85,38 @@ export const handler: Schema['startJob']['functionHandler'] = async (event) => {
 
   return job;
 };
+
+async function ensureWorkerRunning(): Promise<void> {
+  try {
+    const listResp = await ecsClient.send(
+      new ListTasksCommand({
+        cluster: workerEnv.WORKER_CLUSTER_ARN,
+        desiredStatus: 'RUNNING',
+      }),
+    );
+    if ((listResp.taskArns ?? []).length > 0) {
+      return; // a worker is already running/pending
+    }
+    await ecsClient.send(
+      new RunTaskCommand({
+        cluster: workerEnv.WORKER_CLUSTER_ARN,
+        taskDefinition: workerEnv.WORKER_TASK_DEF_ARN,
+        launchType: 'FARGATE',
+        count: 1,
+        networkConfiguration: {
+          awsvpcConfiguration: {
+            subnets: (workerEnv.WORKER_SUBNETS ?? '').split(','),
+            securityGroups: workerEnv.WORKER_SG ? [workerEnv.WORKER_SG] : [],
+            assignPublicIp: 'ENABLED',
+          },
+        },
+      }),
+    );
+  } catch (err) {
+    // The message is already in SQS; log and don't fail the job here.
+    console.error('Failed to launch worker task:', err);
+  }
+}
 
 function resolveOwner(identity: unknown): string | undefined {
   if (!identity || typeof identity !== 'object') {
