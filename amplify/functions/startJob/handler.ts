@@ -1,6 +1,7 @@
 import { getAmplifyDataClientConfig } from '@aws-amplify/backend/function/runtime';
 import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
 import { ECSClient, ListTasksCommand, RunTaskCommand } from '@aws-sdk/client-ecs';
+import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 import { Amplify } from 'aws-amplify';
 import { generateClient } from 'aws-amplify/data';
 import { env } from '$amplify/env/startJob';
@@ -12,14 +13,13 @@ Amplify.configure(resourceConfig, libraryOptions);
 const dataClient = generateClient<Schema>();
 const sqsClient = new SQSClient({});
 const ecsClient = new ECSClient({});
+const ssmClient = new SSMClient({});
 
-// Worker launch config (injected by backend.ts only when the ECS worker is deployed).
-// Cast through `unknown` because the generated `env` type may not include these yet.
+// Name of the SSM parameter holding the worker launch config (injected by
+// backend.ts only when the ECS worker is deployed). Cast through `unknown`
+// because the generated `env` type may not include this yet.
 const workerEnv = env as unknown as {
-  WORKER_CLUSTER_ARN?: string;
-  WORKER_TASK_DEF_ARN?: string;
-  WORKER_SUBNETS?: string;
-  WORKER_SG?: string;
+  WORKER_LAUNCH_CONFIG_PARAM?: string;
 };
 
 export const handler: Schema['startJob']['functionHandler'] = async (event) => {
@@ -70,8 +70,8 @@ export const handler: Schema['startJob']['functionHandler'] = async (event) => {
 
     // Launch the worker Fargate task on demand (scale-to-zero without relying
     // on CloudWatch-alarm Auto Scaling). Skip if a worker is already running.
-    if (workerEnv.WORKER_CLUSTER_ARN) {
-      await ensureWorkerRunning();
+    if (workerEnv.WORKER_LAUNCH_CONFIG_PARAM) {
+      await ensureWorkerRunning(workerEnv.WORKER_LAUNCH_CONFIG_PARAM);
     }
   } catch (error) {
     const reason = error instanceof Error ? error.message : 'Unknown SQS error';
@@ -86,11 +86,24 @@ export const handler: Schema['startJob']['functionHandler'] = async (event) => {
   return job;
 };
 
-async function ensureWorkerRunning(): Promise<void> {
+async function ensureWorkerRunning(paramName: string): Promise<void> {
   try {
+    const paramResp = await ssmClient.send(
+      new GetParameterCommand({ Name: paramName }),
+    );
+    const raw = paramResp.Parameter?.Value;
+    if (!raw) return;
+
+    const config = JSON.parse(raw) as {
+      clusterArn: string;
+      taskDefArn: string;
+      subnets: string[];
+      sg: string;
+    };
+
     const listResp = await ecsClient.send(
       new ListTasksCommand({
-        cluster: workerEnv.WORKER_CLUSTER_ARN,
+        cluster: config.clusterArn,
         desiredStatus: 'RUNNING',
       }),
     );
@@ -99,14 +112,14 @@ async function ensureWorkerRunning(): Promise<void> {
     }
     await ecsClient.send(
       new RunTaskCommand({
-        cluster: workerEnv.WORKER_CLUSTER_ARN,
-        taskDefinition: workerEnv.WORKER_TASK_DEF_ARN,
+        cluster: config.clusterArn,
+        taskDefinition: config.taskDefArn,
         launchType: 'FARGATE',
         count: 1,
         networkConfiguration: {
           awsvpcConfiguration: {
-            subnets: (workerEnv.WORKER_SUBNETS ?? '').split(','),
-            securityGroups: workerEnv.WORKER_SG ? [workerEnv.WORKER_SG] : [],
+            subnets: config.subnets,
+            securityGroups: [config.sg],
             assignPublicIp: 'ENABLED',
           },
         },

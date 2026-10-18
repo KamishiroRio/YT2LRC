@@ -5,6 +5,7 @@ import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as sqs from 'aws-cdk-lib/aws-sqs';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { defineBackend } from '@aws-amplify/backend';
 import { auth } from './auth/resource';
 import { data } from './data/resource';
@@ -164,32 +165,43 @@ if (process.env.DEPLOY_WORKER === 'true') {
   // CloudWatch-alarm Auto Scaling, which is fragile for 0<->1 scale-to-zero
   // (SQS metrics are approximate + laggy, causing false scale-downs that kill
   // a task mid-job).
+  //
+  // The launch config is stored in SSM and read by the Lambda at runtime. This
+  // avoids a direct CloudFormation reference from the data stack -> worker stack,
+  // which would create a circular dependency (worker -> data for the Job table).
   const workerSecurityGroup = new ec2.SecurityGroup(workerStack, 'WorkerSecurityGroup', {
     vpc: workerVpc,
     allowAllOutbound: true,
   });
 
-  backend.startJob.addEnvironment('WORKER_CLUSTER_ARN', workerCluster.clusterArn);
-  backend.startJob.addEnvironment('WORKER_TASK_DEF_ARN', workerTaskDef.taskDefinitionArn);
-  backend.startJob.addEnvironment(
-    'WORKER_SUBNETS',
-    workerVpc.publicSubnets.map((s) => s.subnetId).join(','),
-  );
-  backend.startJob.addEnvironment('WORKER_SG', workerSecurityGroup.securityGroupId);
+  const launchConfigParam = new ssm.StringParameter(workerStack, 'WorkerLaunchConfig', {
+    parameterName: '/yt2lrc/worker/launch-config',
+    stringValue: JSON.stringify({
+      clusterArn: workerCluster.clusterArn,
+      taskDefArn: workerTaskDef.taskDefinitionArn,
+      subnets: workerVpc.publicSubnets.map((s) => s.subnetId),
+      sg: workerSecurityGroup.securityGroupId,
+    }),
+  });
+
+  backend.startJob.addEnvironment('WORKER_LAUNCH_CONFIG_PARAM', launchConfigParam.parameterName);
 
   backend.startJob.resources.lambda.addToRolePolicy(
     new iam.PolicyStatement({
+      actions: ['ssm:GetParameter'],
+      resources: [launchConfigParam.parameterArn],
+    }),
+  );
+  backend.startJob.resources.lambda.addToRolePolicy(
+    new iam.PolicyStatement({
       actions: ['ecs:RunTask', 'ecs:ListTasks'],
-      resources: [workerTaskDef.taskDefinitionArn, workerCluster.clusterArn],
+      resources: ['*'],
     }),
   );
   backend.startJob.resources.lambda.addToRolePolicy(
     new iam.PolicyStatement({
       actions: ['iam:PassRole'],
-      resources: [
-        workerExecutionRole.roleArn,
-        workerTaskDef.taskRole.roleArn,
-      ],
+      resources: ['*'],
     }),
   );
 
