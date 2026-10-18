@@ -155,12 +155,14 @@ def process_message(body: dict):
         log("[4/4] 準備上傳 LRC 到 S3...")
         lrc_key = f"lrc/{job_id}.lrc"
         s3.upload_file(lrc_path, BUCKET_NAME, lrc_key)
-        update_job(job_id, status="DONE", lrc_key=lrc_key)
         write_lrc_to_mongo(
             f"{title}_{artist}" if (title and artist) else track_id,
             lrc_path,
         )
         log("🎉 完美收工！已成功上傳 LRC。[DONE]")
+        # Write DONE last so the frontend sees status/lrcKey and the final
+        # progress log in the same poll (avoids a stale "[4/4]" log after DONE).
+        update_job(job_id, status="DONE", lrc_key=lrc_key)
 
     except Exception as e:
         try:
