@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent } from 'react'
+import { useEffect, useState, type ChangeEvent } from 'react'
 import { generateClient } from 'aws-amplify/data'
 import { uploadData } from 'aws-amplify/storage'
 
@@ -41,10 +41,6 @@ function App() {
   const [selectedCandidateUrl, setSelectedCandidateUrl] = useState('')
   const [audioKey, setAudioKey] = useState('')
   const [uploading, setUploading] = useState(false)
-
-  const subRef = useRef<{ unsubscribe: () => void } | null>(null)
-
-  useEffect(() => () => subRef.current?.unsubscribe(), [])
 
   async function handlePreview() {
     if (!youtubeUrl.trim()) {
@@ -145,18 +141,6 @@ function App() {
         setStatus(job.status ?? '')
         setProgressLog(job.progressLog ?? '')
         setLrcKey(job.lrcKey ?? '')
-
-        subRef.current?.unsubscribe()
-        subRef.current = client.models.Job.onUpdate({
-          filter: { id: { eq: job.id } },
-        }).subscribe({
-          next: (j) => {
-            setStatus(j.status ?? '')
-            setProgressLog(j.progressLog ?? '')
-            setLrcKey(j.lrcKey ?? '')
-          },
-          error: (err) => console.error('subscription error', err),
-        })
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
