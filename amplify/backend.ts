@@ -189,10 +189,12 @@ if (process.env.DEPLOY_WORKER === 'true') {
     .scaleOnMetric('QueueDepthScaling', {
       metric: totalQueueDepth,
       scalingSteps: [
-        { upper: 1, change: -1 },
+        { upper: 0, change: -1 },
         { lower: 1, change: 1 },
       ],
       cooldown: Duration.minutes(1),
+      evaluationPeriods: 2,
+      datapointsToAlarm: 2,
     });
 
   customOutput.workerRepoUri = workerRepo.repositoryUri;
