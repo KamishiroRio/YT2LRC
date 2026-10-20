@@ -110,11 +110,52 @@ npx ampx sandbox   # 另一個終端機
 npm run dev
 ```
 
+## 檔案架構
+
+### 一個 Job 的生命週期（資料流）
+
+```
+src/App.tsx (前端三步驟 UI)
+   │  handleStart → client.mutations.startJob
+   ▼
+amplify/functions/startJob/handler.ts (startJob Lambda)
+   │  1. 建立 Job(QUEUED) 到 DynamoDB
+   │  2. 送訊息到 SQS
+   │  3. ensureWorkerRunning → ecs:RunTask 啟動 worker（若已有 worker 在跑則略過）
+   ▼
+worker/worker.py (Fargate task：main → process_message)
+   │  從 SQS 收訊息 → 依序跑產線
+   │  ├─ [1/4] 拿音檔：S3 下載使用者上傳／auto_pipeline.py 用 yt-dlp 下載
+   │  ├─ [2/4] aligner.py: isolate_vocals → demucs 分離人聲
+   │  ├─ [3/4] aligner.py: align_and_convert_to_lrc → stable-whisper 對齊 → .lrc
+   │  └─ [4/4] 上傳 .lrc 到 S3 → 寫 MongoDB → 更新 DynamoDB(DONE)
+   │  佇列空了 → 自己退出（scale-to-zero）
+   ▼
+src/App.tsx 每 2 秒輪詢 Job → 顯示進度 → DONE 後下載 .lrc
+```
+
+### 各檔案職責
+
+| 檔案 | 角色 |
+|------|------|
+| `src/App.tsx` | 前端三步驟 UI + 每 2 秒輪詢進度 + 下載 .lrc |
+| `amplify/backend.ts` | 後端接線：SQS 佇列、ECS cluster/task-def、SSM launch config、IAM 權限 |
+| `amplify/data/resource.ts` | Job model（DynamoDB schema）+ preview/startJob/fetchLyrics/getSignedLrcUrl 定義 |
+| `amplify/functions/startJob/handler.ts` | startJob Lambda：建 Job → 送 SQS → RunTask 啟動 worker |
+| `amplify/functions/preview/*` | preview Lambda：oembed + iTunes 抓歌名/歌手 + utanet 抓候選歌詞 |
+| `amplify/functions/fetchLyrics/handler.ts` | fetchLyrics Lambda：抓候選歌詞的完整歌詞 |
+| `amplify/functions/getSignedLrcUrl/handler.ts` | getSignedLrcUrl Lambda：產生 .lrc 的 S3 預簽名 URL |
+| `worker/worker.py` | worker 主程式：輪詢 SQS → 跑產線 → 更新 DynamoDB + S3 + MongoDB |
+| `worker/aligner.py` | demucs 人聲分離 + stable-whisper 對齊 + 產出 .lrc |
+| `worker/auto_pipeline.py` | yt-dlp 下載 YouTube 音源（含重試） |
+| `worker/Dockerfile` | worker image（預載 demucs/whisper 模型） |
+| `amplify.yml` | Amplify CI/CD build spec |
+
 ## 目錄結構
 
 ```
 amplify/            # Amplify Gen 2 後端
-  backend.ts        # 後端 wiring（SQS + ECS + secret）
+  backend.ts        # 後端 wiring（SQS + ECS + SSM + secret）
   data/resource.ts  # Job model + preview/startJob/fetchLyrics/getSignedLrcUrl
   functions/        # Lambda（preview / startJob / fetchLyrics / getSignedLrcUrl）
   storage/resource.ts

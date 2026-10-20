@@ -18,6 +18,7 @@ from auto_pipeline import download_youtube_audio
 
 
 def _env(name: str) -> str:
+    """Read a required environment variable (raise if missing)."""
     value = os.environ.get(name)
     if not value:
         raise RuntimeError(f"Missing required environment variable: {name}")
@@ -40,6 +41,10 @@ MODEL = stable_whisper.load_model("small")
 
 
 def update_job(job_id: str, *, status=None, lrc_key=None, progress_log=None):
+    """Update one Job record in DynamoDB (status / lrcKey / progressLog).
+
+    Only the non-None fields are written; other columns are left untouched.
+    """
     parts = []
     values = {}
     names = {}
@@ -67,6 +72,7 @@ def update_job(job_id: str, *, status=None, lrc_key=None, progress_log=None):
 
 
 def get_job(job_id: str):
+    """Read a single Job record from DynamoDB by id."""
     resp = table.get_item(Key={"id": job_id})
     return resp.get("Item")
 
@@ -93,6 +99,12 @@ def write_lrc_to_mongo(track_id: str, lrc_path: str):
 
 
 def process_message(body: dict):
+    """Run the full ML pipeline for one SQS message.
+
+    Steps: download audio (S3 upload or yt-dlp) -> Demucs vocal isolation ->
+    stable-whisper alignment -> write .lrc -> upload to S3 -> MongoDB ->
+    mark the Job DONE (or FAILED on error).
+    """
     job_id = body["jobId"]
     youtube_url = body["youtubeUrl"]
     lyrics = body.get("lyrics") or ""
@@ -175,6 +187,11 @@ def process_message(body: dict):
 
 
 def main():
+    """Poll SQS for jobs, process each one, then exit when the queue is empty.
+
+    Exiting (instead of looping forever) lets the Fargate task stop on its own
+    when there's no more work — this is the event-driven scale-to-zero.
+    """
     print(f"Worker started. Queue={QUEUE_URL} Table={TABLE_NAME} Bucket={BUCKET_NAME}", flush=True)
 
     while True:

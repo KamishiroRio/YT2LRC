@@ -22,6 +22,7 @@ const workerEnv = env as unknown as {
   WORKER_LAUNCH_CONFIG_PARAM?: string;
 };
 
+/** startJob mutation handler: create Job -> enqueue SQS -> launch worker task. */
 export const handler: Schema['startJob']['functionHandler'] = async (event) => {
   const trackId = event.arguments.trackId?.trim();
   const youtubeUrl = event.arguments.youtubeUrl?.trim();
@@ -86,6 +87,7 @@ export const handler: Schema['startJob']['functionHandler'] = async (event) => {
   return job;
 };
 
+/** Launch the worker Fargate task via ecs:RunTask if none is already running/pending. */
 async function ensureWorkerRunning(paramName: string): Promise<void> {
   try {
     const paramResp = await ssmClient.send(
@@ -131,6 +133,7 @@ async function ensureWorkerRunning(paramName: string): Promise<void> {
   }
 }
 
+/** Extract the owner identity (Cognito sub) so allow.owner() filtering matches. */
 function resolveOwner(identity: unknown): string | undefined {
   if (!identity || typeof identity !== 'object') {
     return undefined;

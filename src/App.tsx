@@ -42,6 +42,7 @@ function App() {
   const [audioKey, setAudioKey] = useState('')
   const [uploading, setUploading] = useState(false)
 
+  // 步驟 1：預覽 YouTube 網址 → 抓歌名/歌手/候選歌詞
   async function handlePreview() {
     if (!youtubeUrl.trim()) {
       setError('請輸入 YouTube URL')
@@ -71,6 +72,7 @@ function App() {
     }
   }
 
+  // 選擇候選歌詞來源後，呼叫 fetchLyrics 抓完整歌詞
   async function handlePickCandidate(c: Candidate) {
     setPickingUrl(c.url)
     setError('')
@@ -89,6 +91,7 @@ function App() {
     }
   }
 
+  // 上傳使用者本機音檔到 S3（upload/ 前綴）
   async function handleFileUpload(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -105,6 +108,7 @@ function App() {
     }
   }
 
+  // 步驟 2→3：建立 Job（startJob 會送 SQS + 啟動 worker），拿到 jobId 後開始輪詢進度
   async function handleStart() {
     if (!youtubeUrl.trim()) {
       setError('請先輸入 YouTube URL')
@@ -149,6 +153,7 @@ function App() {
     }
   }
 
+  // 拿預簽名 URL 並另開視窗下載 .lrc
   async function handleDownload() {
     if (!lrcKey) return
     setDownloading(true)
@@ -169,6 +174,7 @@ function App() {
     }
   }
 
+  // 每 2 秒輪詢 Job 狀態，看到 DONE/FAILED 就停（只用輪詢，不用訂閱以避免亂序覆寫）
   useEffect(() => {
     if (!jobId) return
     let stopped = false
